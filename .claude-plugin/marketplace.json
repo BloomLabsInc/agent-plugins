@@ -1,0 +1,20 @@
+{
+  "name": "bloom",
+  "owner": {
+    "name": "Bloom Labs",
+    "url": "https://bloom.diy"
+  },
+  "metadata": {
+    "description": "Bloom's plugins: wake your agent's conversations when someone in Bloom tags them or answers their question"
+  },
+  "plugins": [
+    {
+      "name": "bloom",
+      "source": "./plugins/claude-code",
+      "description": "Wakes your Claude Code conversations when someone in Bloom tags them or answers a question they asked, even while they're idle",
+      "category": "productivity",
+      "tags": ["bloom", "notifications", "hooks", "mcp"],
+      "homepage": "https://github.com/BloomLabsInc/agent-plugins"
+    }
+  ]
+}
