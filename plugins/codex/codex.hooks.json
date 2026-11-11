@@ -1,0 +1,35 @@
+{
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "^mcp__",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "sh \"${PLUGIN_ROOT}/bin/bloom-hook\" codex"
+                    }
+                ]
+            }
+        ],
+        "SessionStart": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "sh \"${PLUGIN_ROOT}/bin/bloom-hook\" codex"
+                    }
+                ]
+            }
+        ],
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "sh \"${PLUGIN_ROOT}/bin/bloom-hook\" codex"
+                    }
+                ]
+            }
+        ]
+    }
+}
