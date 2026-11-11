@@ -1,0 +1,77 @@
+#!/bin/sh
+# The Bloom plugin's Claude Code waiter (SessionStart and Stop, asyncRewake): waits in a few
+# kilobytes of sh for this conversation's tags and answers, then prints them on stderr and exits 2,
+# which wakes the session even while it is idle. One waiter per conversation: a newer one (the next
+# Stop) replaces the older. A conversation no Bloom answer connected yet is given two minutes for
+# the PostToolUse hook to connect it, then the waiter exits 0 and the next Stop starts another.
+#
+# The tags themselves come from the machine's one watcher (`bloom watch-hub`), which the PostToolUse
+# hook armed: it writes each to ~/.bloom/inbox/<session>.tags/, and ~/.bloom/wait.sh claims, prints
+# and deletes them. Each waiter reads them into its own file, and one that was replaced after it
+# already holds tags still hands them over, so a tag claimed at the moment of a replacement is never
+# lost. When no watcher holds the session (the machine restarted, or the watcher let it go), the
+# waiter asks the CLI to arm it again from the kept grant, at most once a minute.
+case "${BLOOM_PLUGIN_DISABLED:-}" in 1 | true | TRUE) exit 0 ;; esac
+# A `claude -p` run is never woken while idle, and its async hooks end with it: nothing to wait
+# for. Claude Code sets CLAUDE_CODE_SESSION_ATTENDED=0 in its hooks' environment there (measured on
+# 2.1.318, 2026-11-11, from a `claude -p` hook's environment).
+[ "${CLAUDE_CODE_SESSION_ATTENDED:-1}" = 0 ] && exit 0
+in=$(cat)
+sid=$(printf '%s' "$in" | tr -d '\n' | sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p')
+[ -n "$sid" ] || exit 0
+home="$HOME/.bloom"
+dir="$home/plugin/claude-code"
+mkdir -p "$dir" 2>/dev/null || exit 0
+key=$(printf '%s' "$sid" | tr -c 'A-Za-z0-9_-' '_')
+link="$dir/$key.json"
+me="$dir/$key.waiter"
+out="$dir/$key.$$.out"
+# Replace an older waiter of this conversation, but only if that pid still is one.
+old=$(cat "$me" 2>/dev/null)
+if [ -n "$old" ] && [ "$old" != $$ ]; then
+    case "$(ps -o args= -p "$old" 2>/dev/null)" in *bloom-wait*) kill "$old" 2>/dev/null ;; esac
+fi
+echo $$ >"$me"
+child=
+cleanup() {
+    [ -n "$child" ] && kill "$child" 2>/dev/null
+    [ "$(cat "$me" 2>/dev/null)" = $$ ] && rm -f "$me"
+}
+trap 'cleanup; [ -s "$out" ] || { rm -f "$out"; exit 0; }; hand_over' TERM INT HUP
+hand_over() {
+    {
+        echo "Bloom: someone tagged this conversation or answered its question. Read it with list_notifications({ branchId, sessionName, unread: true }), act on it, and answer in its thread."
+        cat "$out"
+    } >&2
+    rm -f "$out"
+    [ "$(cat "$me" 2>/dev/null)" = $$ ] && rm -f "$me"
+    exit 2
+}
+mine() { [ "$(cat "$me" 2>/dev/null)" = $$ ]; }
+i=0
+while [ ! -s "$link" ]; do
+    mine || exit 0
+    i=$((i + 1))
+    [ "$i" -gt 120 ] && { cleanup; exit 0; }
+    sleep 1
+done
+id=$(sed -n 's/.*"agentSessionId" *: *"\([^"]*\)".*/\1/p' "$link")
+[ -n "$id" ] || { cleanup; exit 0; }
+rearmed=0
+while :; do
+    started=$(date +%s)
+    sh "$home/wait.sh" "$id" >"$out" 2>"$dir/$key.err" &
+    child=$!
+    wait "$child"
+    rc=$?
+    child=
+    # Tags in hand are handed over even by a waiter that was just replaced.
+    [ "$rc" = 0 ] && [ -s "$out" ] && hand_over
+    rm -f "$out"
+    mine || exit 0
+    # No watcher holds the session: arm it again from the kept grant, once per minute.
+    [ $(($(date +%s) - started)) -gt 60 ] && rearmed=0
+    [ "$rearmed" = 1 ] && { cleanup; exit 0; }
+    rearmed=1
+    sh "$(dirname -- "$0")/bloom-hook" claude-code --rearm "$sid" </dev/null
+done
