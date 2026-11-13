@@ -1,6 +1,6 @@
 {
     "name": "bloom-wake",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "description": "Wakes your Codex threads when someone in Bloom tags them or answers a question they asked. Installed once: its hooks read the code in each Bloom answer and hand each tag to the thread through Bloom's CLI (@bloom/cli).",
     "author": {
         "name": "Bloom Labs",
