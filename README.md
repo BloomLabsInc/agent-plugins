@@ -8,15 +8,20 @@ Bloom listens, with nothing to start in each one.
 | Agent | Install | Update |
 | --- | --- | --- |
 | Claude Code | `claude plugin install bloom --marketplace BloomLabsInc/agent-plugins` | `claude plugin marketplace update bloom && claude plugin update bloom@bloom` |
-| Codex | `codex plugin marketplace add BloomLabsInc/agent-plugins && codex plugin add bloom-wake@bloom` | `codex plugin marketplace upgrade bloom && codex plugin add bloom-wake@bloom` |
+| Codex | `npx -y --prefix ~/.bloom @bloom/cli@latest hooks install codex` (no plugin; see below) | the same command |
 
 `npx @bloom/cli mcp setup claude` and `npx @bloom/cli mcp setup codex` connect Bloom's MCP server
-and install the plugin in one step. Then:
+and install the wake hooks in one step. Then:
 
 - **Claude Code** loads a newly installed plugin when a session starts: type `/reload-plugins` in a
   running one, or start a new one.
-- **Codex** asks you to trust the plugin's hooks the first time it starts after an install or update.
-  Choose "Trust all and continue".
+- **Codex** skips a new hook until you allow it: in Codex Desktop, open **Review hooks** above the
+  message box (or **Settings > Hooks**); in the CLI, `/hooks`. Allow Bloom's hooks once. Later
+  releases do not ask again. Check with `npx @bloom/cli doctor codex`.
+
+The Codex plugin `bloom-wake` is retired: current Codex never loaded its hooks, and a plugin hook
+asks for Trust again on every release. Bloom's CLI now writes the same hooks into your own
+`~/.codex/hooks.json` and removes `bloom-wake`.
 
 The plugins run on macOS and Linux (WSL included) with Node 22 or newer.
 
@@ -25,7 +30,8 @@ The plugins run on macOS and Linux (WSL included) with Node 22 or newer.
 Each plugin holds the agent's hooks, a short POSIX shell launcher (`bin/bloom-hook`), Claude Code's
 waiter (`bin/bloom-wait`), and `cli-version`, the `@bloom/cli` release the hooks run. The launcher
 runs that release with `npx -y --prefix ~/.bloom @bloom/cli@<version>`, so it never picks up a
-project's own copy.
+project's own copy. For Codex, the CLI copies the same launcher to `~/.bloom/bin/bloom-hook`, with
+its pin in `~/.bloom/cli-version`, and names it in `~/.codex/hooks.json` beside your own hooks.
 
 | Hook | When | What it does |
 | --- | --- | --- |
@@ -54,7 +60,7 @@ a token or a code.
 
 - **Pause:** set `BLOOM_PLUGIN_DISABLED=1` in the agent's environment, or disable the plugin
   (`claude plugin disable bloom@bloom`).
-- **Uninstall:** `claude plugin uninstall bloom@bloom`, or `codex plugin remove bloom-wake@bloom`.
+- **Uninstall:** `claude plugin uninstall bloom@bloom`, or `npx @bloom/cli hooks uninstall codex`.
   Then delete `~/.bloom` if nothing else on the computer uses Bloom's CLI.
 
 ## Contributing and security

@@ -1,9 +1,14 @@
 #!/bin/sh
-# The Bloom plugin's launcher: every hook runs `bloom hook <harness>` from the @bloom/cli release the
-# plugin pins (`../cli-version`), with the hook's input on stdin. npx resolves it from ~/.bloom,
-# never from the working directory's project, where a Bloom checkout's own packages/cli made a plain
-# npx exit 127 (T-59, #6630). A hook never fails its client's call: problems go to
-# ~/.bloom/plugin.log, and it exits 0.
+# Bloom's hook launcher: every hook runs `bloom hook <harness>` from the @bloom/cli release pinned in
+# `../cli-version`, with the hook's input on stdin. Two layouts, one file: the Claude Code plugin
+# (`plugin/bin/bloom-hook`, pin `plugin/cli-version`), and Codex, where `bloom hooks install codex`
+# copies it to `~/.bloom/bin/bloom-hook` (pin `~/.bloom/cli-version`) and names it in
+# `~/.codex/hooks.json`. Codex trusts that hook by its command alone, so this file and the pin may
+# change with each release without asking the person to Trust again; the pin is the security
+# surface, so it must be a plain release (never `latest`, never empty) or nothing runs. npx resolves
+# it from ~/.bloom, never from the working directory's project, where a Bloom checkout's own
+# packages/cli made a plain npx exit 127 (T-59, #6630). A hook never fails its client's call:
+# problems go to ~/.bloom/plugin.log, and it exits 0.
 #
 # Node starts only when there is something to do: after a tool call whose result carries a Bloom
 # watch code, for a Codex thread the plugin already connected, or for a Claude Code re-arm. Any
@@ -14,12 +19,23 @@
 case "${BLOOM_PLUGIN_DISABLED:-}" in 1 | true | TRUE) exit 0 ;; esac
 here=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd) || exit 0
 v=$(tr -d ' \n' <"$here/../cli-version" 2>/dev/null)
-[ -n "$v" ] || exit 0
+case "$v" in
+[0-9]*.[0-9]*.[0-9]*) case "$v" in *[!0-9A-Za-z.-]*) v= ;; esac ;;
+*) v= ;;
+esac
+if [ -z "$v" ]; then
+    mkdir -p "$HOME/.bloom" 2>/dev/null &&
+        echo "bloom-hook: $here/../cli-version is missing or not a release; run \`bloom doctor codex\`" >>"$HOME/.bloom/plugin.log"
+    exit 0
+fi
 in=
 case " $* " in
 *" --rearm "*) ;;
 *)
     in=$(cat)
+    # The heartbeat `bloom doctor` reads: this client ran a Bloom hook, when, and for which event.
+    ev=$(printf '%s' "$in" | tr -d '\n' | sed -n 's/.*"hook_event_name" *: *"\([A-Za-z]*\)".*/\1/p')
+    mkdir -p "$HOME/.bloom/plugin" 2>/dev/null && printf '%s %s\n' "$(date +%s)" "$ev" >"$HOME/.bloom/plugin/$1.last" 2>/dev/null
     case "$in" in
     *'"hook_event_name":"PostToolUse"'* | *'"hook_event_name": "PostToolUse"'*)
         case "$in" in *wc_*) ;; *) exit 0 ;; esac
@@ -34,5 +50,9 @@ case " $* " in
     ;;
 esac
 mkdir -p "$HOME/.bloom" 2>/dev/null || exit 0
-printf '%s' "$in" | npx -y --prefix "$HOME/.bloom" "@bloom/cli@$v" hook "$@" >>"$HOME/.bloom/plugin.log" 2>&1
+out=$(printf '%s' "$in" | npx -y --prefix "$HOME/.bloom" "@bloom/cli@$v" hook "$@" 2>>"$HOME/.bloom/plugin.log")
+# The CLI's one stdout line for the client (Codex's PostToolUse `hookSpecificOutput`, telling the
+# agent something it must know) goes back to the client; anything else on stdout goes to the log.
+printf '%s\n' "$out" | grep '^{"hookSpecificOutput"' | head -n 1
+printf '%s\n' "$out" | grep -v -e '^{"hookSpecificOutput"' -e '^$' >>"$HOME/.bloom/plugin.log"
 exit 0

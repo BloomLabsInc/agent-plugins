@@ -1,7 +1,7 @@
 {
     "name": "bloom",
     "displayName": "Bloom",
-    "version": "0.4.1",
+    "version": "0.4.2",
     "description": "Wakes your Claude Code conversations when someone in Bloom tags them or answers a question they asked, even while they are idle. Installed once: its hooks read the code in each Bloom answer and listen for that conversation through Bloom's CLI (@bloom/cli), with no step per conversation.",
     "author": {
         "name": "Bloom",
