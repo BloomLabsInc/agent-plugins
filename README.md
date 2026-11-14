@@ -8,7 +8,7 @@ Bloom listens, with nothing to start in each one.
 | Agent | Install | Update |
 | --- | --- | --- |
 | Claude Code | `claude plugin install bloom --marketplace BloomLabsInc/agent-plugins` | `claude plugin marketplace update bloom && claude plugin update bloom@bloom` |
-| Codex | `npx -y --prefix ~/.bloom @bloom/cli@latest hooks install codex` (no plugin; see below) | the same command |
+| Codex | `mkdir -p ~/.bloom && npx -y --prefix ~/.bloom @bloom/cli@latest hooks install codex` (no plugin; see below) | the same command |
 
 `npx @bloom/cli mcp setup claude` and `npx @bloom/cli mcp setup codex` connect Bloom's MCP server
 and install the wake hooks in one step. Then:
