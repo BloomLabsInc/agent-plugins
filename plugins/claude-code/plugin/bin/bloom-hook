@@ -42,6 +42,25 @@ case " $* " in
         sid=$(printf '%s' "$in" | tr -d '\n' | sed -n 's/.*"session_id" *: *"\([^"]*\)".*/\1/p')
         key=$(printf '%s' "$sid" | tr -c 'A-Za-z0-9_-' '_')
         [ -n "$sid" ] && [ -s "$HOME/.bloom/plugin/$1/$key.json" ] || exit 0
+        # Codex only: nothing here goes back to Codex (`runHook` returns no notice for these
+        # events), so the turn never waits on npx and node: started detached, the hook returns at
+        # once. Measured 11-14: with this hook blocking a few seconds, one `codex exec resume` turn
+        # took two queued tags and showed only one (run hd8ra26gqm2mc0qz5wn0zj8yc18j6sbk); with the
+        # hook out of the turn, both (hd8yc0bh57y9wj3mtzxjsj5aqx8j6nm6). A detached run that fails
+        # leaves `<harness>.failed`, which `bloom doctor codex` reports with the fix.
+        if [ "$1" = codex ]; then
+            mkdir -p "$HOME/.bloom/plugin" 2>/dev/null || exit 0
+            failed="$HOME/.bloom/plugin/$1.failed"
+            (
+                printf '%s' "$in" | npx -y --prefix "$HOME/.bloom" "@bloom/cli@$v" hook "$@"
+                rc=$?
+                if [ "$rc" -eq 0 ]; then rm -f "$failed"; else
+                    printf '%s %s %s\n' "$(date +%s)" "$ev" "$rc" >"$failed"
+                    echo "bloom-hook: detached $ev hook exited $rc (@bloom/cli@$v)"
+                fi
+            ) >>"$HOME/.bloom/plugin.log" 2>&1 &
+            exit 0
+        fi
         ;;
     esac
     ;;
