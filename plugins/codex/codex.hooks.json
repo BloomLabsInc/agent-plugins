@@ -2,7 +2,7 @@
     "hooks": {
         "PostToolUse": [
             {
-                "matcher": "^mcp__",
+                "matcher": "^(mcp__.*|exec)$",
                 "hooks": [
                     {
                         "type": "command",
