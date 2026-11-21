@@ -1,9 +1,11 @@
 #!/bin/sh
 # The Bloom plugin's launcher: every hook runs `bloom hook <harness>` from the @bloom/cli release the
-# plugin pins (`../cli-version`), with the hook's input on stdin. npx resolves it from ~/.bloom,
+# plugin pins (`../cli-version`), or the newer one this machine pins (below), with the hook's input on
+# stdin. npx resolves it from ~/.bloom,
 # never from the working directory's project, where a Bloom checkout's own packages/cli made a plain
 # npx exit 127 (T-59, #6630). A hook never fails its client's call: problems go to
-# ~/.bloom/plugin.log, and it exits 0.
+# ~/.bloom/plugin.log, and it exits 0. Only `--rearm`, which no client calls, passes the CLI's
+# exit status on.
 #
 # Node starts only when there is something to do: after a tool call whose result carries a Bloom
 # watch code, for a Codex thread the plugin already connected, or for a Claude Code re-arm. Any
@@ -34,5 +36,49 @@ case " $* " in
     ;;
 esac
 mkdir -p "$HOME/.bloom" 2>/dev/null || exit 0
-printf '%s' "$in" | npx -y --prefix "$HOME/.bloom" "@bloom/cli@$v" hook "$@" >>"$HOME/.bloom/plugin.log" 2>&1
+# The machine pin, ~/.bloom/cli-version: every launcher on this computer runs the newest release any
+# of them pins, never an older one. A copy pinning a newer release raises it; a stale copy (Claude
+# Code keeps one per project-scope install, and 40 of 41 on one Mac stayed on 0.4.1 on 11-18) runs
+# the newer CLI, whose first hook replaces an older watch hub (T-242). Only a plain X.Y.Z is read
+# or written, so the file can never name `latest` or anything else to run. A copy raises it only
+# after its own release ran (exit 0): a pin npm does not serve (an unpublished bump, a failed
+# release) would otherwise stop every hook on the machine, with nothing to lower it.
+release() {
+    case "$1" in '' | *[!0-9.]* | .* | *. | *..*) return 1 ;; esac
+    [ "$(printf '%s' "$1" | tr -cd . | wc -c | tr -d ' ')" = 2 ]
+}
+newer() { # whether release $1 is newer than release $2, by number
+    awk -v a="$1" -v b="$2" 'BEGIN { split(a, x, "."); split(b, y, ".")
+        for (i = 1; i <= 3; i++) { if (x[i] + 0 > y[i] + 0) exit 0; if (x[i] + 0 < y[i] + 0) exit 1 }
+        exit 1 }'
+}
+pin="$HOME/.bloom/cli-version"
+m=$(tr -d ' \n' <"$pin" 2>/dev/null)
+raise=
+if release "$v"; then
+    if release "$m" && newer "$m" "$v"; then
+        v=$m
+    elif ! release "$m" || newer "$v" "$m"; then
+        raise=1
+    fi
+fi
+out=$(printf '%s' "$in" | npx -y --prefix "$HOME/.bloom" "@bloom/cli@$v" hook "$@" 2>>"$HOME/.bloom/plugin.log")
+ran=$?
+if [ -n "$raise" ] && [ "$ran" = 0 ]; then
+    # Write, then read back: another copy raising at the same moment may have written an older
+    # release after ours. Retry a few times; the newest copy's next hook settles any race left.
+    for _ in 1 2 3; do
+        printf '%s\n' "$v" >"$pin.$$" 2>/dev/null && mv -f "$pin.$$" "$pin" 2>/dev/null
+        rm -f "$pin.$$" 2>/dev/null
+        m=$(tr -d ' \n' <"$pin" 2>/dev/null)
+        release "$m" && ! newer "$v" "$m" && break
+    done
+fi
+# The CLI's one stdout line for the client (Codex's PostToolUse `hookSpecificOutput`, telling the
+# agent something it must know) goes back to the client; anything else on stdout goes to the log.
+printf '%s\n' "$out" | grep '^{"hookSpecificOutput"' | head -n 1
+printf '%s\n' "$out" | grep -v -e '^{"hookSpecificOutput"' -e '^$' >>"$HOME/.bloom/plugin.log"
+# `--rearm` is no client's hook call (the waiter, or a person, asks for it): one that armed nothing
+# exits non-zero, with why in ~/.bloom/plugin.log, never a silent 0 (11-19).
+case " $* " in *" --rearm "*) exit "$ran" ;; esac
 exit 0
