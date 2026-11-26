@@ -53,7 +53,7 @@ cleanup() {
 trap 'cleanup; [ -s "$out" ] || { rm -f "$out"; exit 0; }; hand_over' TERM INT HUP
 hand_over() {
     {
-        echo "Bloom: someone tagged this conversation or answered its question. Read it with list_notifications({ branchId, sessionName, unread: true }), act on it, and answer in its thread."
+        echo "Bloom: a comment is waiting for this conversation; each line below says why (reason: an answer to its question, a tag, a reply in a thread it is in, or a new thread on a frame it wrote). Read it with list_notifications({ branchId, sessionName, unread: true }), act on it, and answer in its thread."
         cat "$out"
     } >&2
     rm -f "$out" "$deaf"
